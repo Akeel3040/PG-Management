@@ -47,7 +47,7 @@ export default function PropertiesPage() {
     googleMapsUrl: "",
     description: "",
     rules: "",
-    totalFloors: 2,
+    totalFloors: 5,
   });
 
   const loadProperties = async () => {
@@ -100,7 +100,7 @@ export default function PropertiesPage() {
         googleMapsUrl: "",
         description: "",
         rules: "",
-        totalFloors: 2,
+        totalFloors: 5,
       });
       loadProperties();
       await refreshProperties();

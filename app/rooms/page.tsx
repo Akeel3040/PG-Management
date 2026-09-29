@@ -22,10 +22,12 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { useProperty } from "@/components/property-context";
+import { useAuth } from "@/components/auth-context";
 import { formatCurrency, getBedStatusColor } from "@/lib/utils";
 
 export default function RoomsPage() {
-  const { selectedPropertyId, properties } = useProperty();
+  const { selectedPropertyId, properties, refreshProperties } = useProperty();
+  const { user } = useAuth();
   const [rooms, setRooms] = useState<any[]>([]);
   const [floors, setFloors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,12 +58,19 @@ export default function RoomsPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [floorError, setFloorError] = useState<string | null>(null);
+  const [settingUpFloors, setSettingUpFloors] = useState(false);
+  const canManageFloors = user?.role === "OWNER" || user?.role === "SUPER_ADMIN";
 
   const loadData = async () => {
     setLoading(true);
     try {
       const propId = selectedPropertyId || (properties[0]?.id ?? "");
-      if (!propId) return;
+      if (!propId) {
+        setRooms([]);
+        setFloors([]);
+        return;
+      }
 
       const [rRes, fRes] = await Promise.all([
         fetch(`/api/rooms?propertyId=${propId}`),
@@ -69,9 +78,16 @@ export default function RoomsPage() {
       ]);
 
       if (rRes.ok) setRooms(await rRes.json());
-      if (fRes.ok) setFloors(await fRes.json());
+      if (fRes.ok) {
+        setFloors(await fRes.json());
+        setFloorError(null);
+      } else {
+        setFloors([]);
+        setFloorError("Could not load floors for this property.");
+      }
     } catch (err) {
       console.error(err);
+      setFloorError("Could not load floors. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -79,10 +95,49 @@ export default function RoomsPage() {
 
   useEffect(() => {
     loadData();
-    if (selectedPropertyId) {
-      setRoomForm((prev) => ({ ...prev, propertyId: selectedPropertyId }));
-    }
+    const propertyId = selectedPropertyId || properties[0]?.id || "";
+    setSelectedFloor("");
+    setRoomForm((prev) => prev.propertyId === propertyId
+      ? prev
+      : { ...prev, propertyId, floorId: "" });
   }, [selectedPropertyId, properties]);
+
+  const handleSetupFloors = async () => {
+    const propertyId = selectedPropertyId || properties[0]?.id;
+    if (!propertyId) {
+      setFloorError("Select a property before setting up floors.");
+      return;
+    }
+
+    setSettingUpFloors(true);
+    setFloorError(null);
+    try {
+      const res = await fetch("/api/floors/setup-defaults", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFloorError(data.error || "Could not set up floors.");
+        return;
+      }
+
+      setFloors(data.floors);
+      setRoomForm((prev) => ({
+        ...prev,
+        propertyId,
+        floorId: prev.propertyId === propertyId && prev.floorId
+          ? prev.floorId
+          : data.floors[0]?.id || "",
+      }));
+      await refreshProperties();
+    } catch (err) {
+      setFloorError("Could not set up floors. Please try again.");
+    } finally {
+      setSettingUpFloors(false);
+    }
+  };
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -395,15 +450,30 @@ export default function RoomsPage() {
                 <label className="font-medium text-foreground">Floor *</label>
                 <select
                   required
+                  disabled={floors.length === 0}
                   value={roomForm.floorId}
                   onChange={(e) => setRoomForm({ ...roomForm, floorId: e.target.value })}
                   className="w-full rounded-lg border border-input bg-background p-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
                 >
-                  <option value="">Select Floor</option>
+                  <option value="">{floors.length ? "Select Floor" : "No floors set up"}</option>
                   {floors.map((f) => (
                     <option key={f.id} value={f.id}>{f.floorName}</option>
                   ))}
                 </select>
+                {canManageFloors && floors.length < 5 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    disabled={settingUpFloors || !roomForm.propertyId}
+                    isLoading={settingUpFloors}
+                    onClick={handleSetupFloors}
+                  >
+                    <Layers className="mr-1.5 h-3.5 w-3.5" /> Set Up Floors 1-5
+                  </Button>
+                )}
+                {floorError && <p className="text-[11px] text-destructive">{floorError}</p>}
               </div>
 
               <Input
