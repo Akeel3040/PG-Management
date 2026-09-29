@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && if [ -n \"$INITIAL_OWNER_PASSWORD\" ]; then DATABASE_URL=\"$DATABASE_URL_UNPOOLED\" npm run db:bootstrap-owner; fi && next build",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:bootstrap-owner": "tsx prisma/bootstrap-owner.ts",
     "db:seed": "tsx prisma/seed.ts",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run"
